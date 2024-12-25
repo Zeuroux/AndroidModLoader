@@ -19,7 +19,6 @@
 #include <mod/config.h>
 
 #include <jnifn.h>
-#include <iostream>
 
 #ifdef __IL2CPPUTILS
     #include <il2cpp/functions.h>
@@ -250,12 +249,12 @@ bool mkdirs(const std::string& path, mode_t mode) {
         currentPath += part + "/";
 
         if (mkdir(currentPath.c_str(), mode) != 0 && errno != EEXIST) { 
-            std::cerr << "Error creating directory: " << currentPath << " errno: " << errno << std::endl;
+            logger->Error("Error creating directory: %s errno: %d", currentPath.c_str(), errno);
             return false;
         }
     }
 
-    return true; // Success
+    return true;
 }
 
 extern ModDesc* pLastModProcessed;
@@ -316,9 +315,16 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     } g_szAppName[i] = 0;
     env->ReleaseStringUTFChars(jTmp, szTmp);
     logger->Info("Determined app info: %s", g_szAppName);
-    
-    char abi[256];
-    __system_property_get("ro.product.cpu.abi", abi);
+
+    const char* abi;
+    #if defined(__arm__)
+        abi = "armeabi-v7a";
+    #elif defined(__aarch64__)
+        abi = "arm64-v8a";
+    #else
+        abi = "unknown";
+    #endif
+    logger->Info("Detected ABI: %s", abi);
 
     /* Create a folder in /games/com.mojang/.../ */
     snprintf(g_szAndroidDataRootDir, sizeof(g_szAndroidDataRootDir), "%s/games/com.mojang/launchly/%s/", g_szInternalStoragePath, abi);
