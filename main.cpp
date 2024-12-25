@@ -316,6 +316,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     } g_szAppName[i] = 0;
     env->ReleaseStringUTFChars(jTmp, szTmp);
     logger->Info("Determined app info: %s", g_szAppName);
+    
     char abi[256];
     __system_property_get("ro.product.cpu.abi", abi);
 
