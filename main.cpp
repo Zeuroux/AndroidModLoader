@@ -19,6 +19,7 @@
 #include <mod/config.h>
 
 #include <jnifn.h>
+#include <iostream>
 
 #ifdef __IL2CPPUTILS
     #include <il2cpp/functions.h>
@@ -43,8 +44,7 @@ char g_szInternalStoragePath[256],
      g_szInternalModsDir[256],
      g_szAndroidDataRootDir[256],
      g_szAndroidDataDir[256],
-     g_szCfgPath[256],
-     g_szFastman92Android[256];
+     g_szCfgPath[256];
 const char* g_szDataDir;
 
 jobject appContext;
@@ -227,6 +227,37 @@ void LoadMods(const char* path)
     }
 }
 
+std::vector<std::string> splitPath(const std::string& path) {
+    std::vector<std::string> parts;
+    size_t start = 0;
+    size_t end = path.find("/");
+
+    while (end != std::string::npos) {
+        parts.push_back(path.substr(start, end - start));
+        start = end + 1;
+        end = path.find("/", start);
+    }
+    parts.push_back(path.substr(start));
+
+    return parts;
+}
+
+bool mkdirs(const std::string& path, mode_t mode) {
+    std::vector<std::string> parts = splitPath(path);
+    std::string currentPath = "";
+
+    for (const auto& part : parts) {
+        currentPath += part + "/";
+
+        if (mkdir(currentPath.c_str(), mode) != 0 && errno != EEXIST) { 
+            std::cerr << "Error creating directory: " << currentPath << " errno: " << errno << std::endl;
+            return false;
+        }
+    }
+
+    return true; // Success
+}
+
 extern ModDesc* pLastModProcessed;
 void StartSignalHandler();
 void HookALog();
@@ -285,45 +316,25 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     } g_szAppName[i] = 0;
     env->ReleaseStringUTFChars(jTmp, szTmp);
     logger->Info("Determined app info: %s", g_szAppName);
+    char abi[256];
+    __system_property_get("ro.product.cpu.abi", abi);
 
-  #ifdef FASTMAN92_CODE
-    /* Fastman92 Part */
-    bAML_HasFastmanModified = GetExternalFilesDir_FLA(env, appContext, g_szFastman92Android, sizeof(g_szFastman92Android));
-    __pathback(g_szFastman92Android);
-
-    // Android/data/... dir
-    snprintf(g_szAndroidDataRootDir, sizeof(g_szAndroidDataRootDir), "%s/", g_szFastman92Android);
-    
-    // Android/data/.../mods dir
-    snprintf(g_szModsDir, sizeof(g_szModsDir), "%s/mods/", g_szFastman92Android);
-    mkdir(g_szModsDir, 0777);
-
-    // Android/data/.../files dir
-    snprintf(g_szAndroidDataDir, sizeof(g_szAndroidDataDir), "%s/files/", g_szFastman92Android);
-    mkdir(g_szAndroidDataDir, 0777);
-    
-    // Android/data/.../configs dir
-    snprintf(g_szCfgPath, sizeof(g_szCfgPath), "%s/configs/", g_szFastman92Android);
-    mkdir(g_szCfgPath, 0777);
-  #else
-    /* Create a folder in /Android/data/.../ */
-    snprintf(g_szAndroidDataRootDir, sizeof(g_szAndroidDataRootDir), "%s/Android/data/%s/", g_szInternalStoragePath, g_szAppName);
+    /* Create a folder in /games/com.mojang/.../ */
+    snprintf(g_szAndroidDataRootDir, sizeof(g_szAndroidDataRootDir), "%s/games/com.mojang/launchly/%s/", g_szInternalStoragePath, abi);
     DIR* dir = opendir(g_szAndroidDataRootDir);
     if(dir != NULL) closedir(dir);
     else GetExternalFilesDir(env, appContext);
+    /* Create "mods" folder in /games/com.mojang/.../ */
+    snprintf(g_szModsDir, sizeof(g_szModsDir), "%s/games/com.mojang/launchly/%s/mods/", g_szInternalStoragePath, abi);
+    mkdirs(g_szModsDir, 0777);
 
-    /* Create "mods" folder in /Android/data/.../ */
-    snprintf(g_szModsDir, sizeof(g_szModsDir), "%s/Android/data/%s/mods/", g_szInternalStoragePath, g_szAppName);
-    mkdir(g_szModsDir, 0777);
+    /* Create "files" folder in /games/com.mojang/.../ */
+    snprintf(g_szAndroidDataDir, sizeof(g_szAndroidDataDir), "%s/games/com.mojang/launchly/%s/files/", g_szInternalStoragePath, abi);
+    mkdirs(g_szAndroidDataDir, 0777); // Who knows, right?
 
-    /* Create "files" folder in /Android/data/.../ */
-    snprintf(g_szAndroidDataDir, sizeof(g_szAndroidDataDir), "%s/Android/data/%s/files/", g_szInternalStoragePath, g_szAppName);
-    mkdir(g_szAndroidDataDir, 0777); // Who knows, right?
-
-    /* Create "configs" folder in /Android/data/.../ */
-    snprintf(g_szCfgPath, sizeof(g_szCfgPath), "%s/Android/data/%s/configs/", g_szInternalStoragePath, g_szAppName);
-    mkdir(g_szCfgPath, 0777);
-  #endif
+    /* Create "configs" folder in /games/com.mojang/.../ */
+    snprintf(g_szCfgPath, sizeof(g_szCfgPath), "%s/games/com.mojang/launchly/%s/configs/", g_szInternalStoragePath, abi);
+    mkdirs(g_szCfgPath, 0777);
 
     /* root/data/data Folder */
     g_szDataDir = env->GetStringUTFChars(GetAbsolutePath(env, GetFilesDir(env, appContext)), NULL);
@@ -344,7 +355,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     g_bShowUpdatedToast = cfg->GetBool("ShowUpdaterToast", true);
     g_bShowUpdateFailedToast = cfg->GetBool("ShowUpdaterFailedToast", true);
     g_bEnableFileDownloads = cfg->GetBool("EnableModFileDownloads", true);
-    g_nEnableNews = cfg->GetInt("ShowNewsForFewTimes", 3);
+    g_nEnableNews = cfg->GetInt("ShowNewsForFewTimes", 0);
     g_pLastNewsId = cfg->Bind("LastNewsIdShowed", 0, "Savings");
     g_nDownloadTimeout = cfg->GetInt("DownloadTimeout", 2);
 

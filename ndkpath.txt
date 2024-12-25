@@ -1,1 +1,1 @@
-D:\android-ndk
+C:\Users\Zeyro\AppData\Local\Android\Sdk\ndk\28.0.12433566
